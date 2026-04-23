@@ -3,8 +3,9 @@ import { Geist, Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import Navbar from "@/components/ui/Navbar";
+import Footer from "@/components/ui/Footer";
 
-const inter = Inter({subsets:['latin'],variable:'--font-sans'});
+const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -38,8 +39,13 @@ export default function RootLayout({
         inter.variable,
       )}
     >
-      <Navbar />
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <Navbar />
+        <main className="flex flex-col min-h-[calc(100vh-3.5rem-1px)]">
+          <div className="flex-1 flex flex-col h-full">{children}</div>
+          <Footer />
+        </main>
+      </body>
     </html>
   );
 }
