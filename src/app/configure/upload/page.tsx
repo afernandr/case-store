@@ -1,6 +1,7 @@
 "use client";
 
 import { Progress } from "@/components/ui/progress";
+import { uploadWithProgress } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 import {
   Image,
@@ -8,17 +9,38 @@ import {
   MousePointer,
   MousePointerSquareDashed,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import Dropzone, { FileRejection } from "react-dropzone";
+import { toast } from "sonner";
 
 const Page = () => {
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
+  const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = useState<number>(45);
+  const router = useRouter();
 
-  const onDropRejected = () => {};
-  const onDropAccepted = () => {};
+  const onDropRejected = (rejectedFiles: Array<FileRejection>) => {
+    const [file] = rejectedFiles;
+    setIsDragOver(false);
+    toast.error(`${file.file.type} is not supported.`);
+  };
+  const onDropAccepted = (files: Array<File>) => {
+    setIsUploading(true);
 
-  const isUploading = false;
+    uploadWithProgress({
+      file: files[0],
+      onProgress: (percentage) => setUploadProgress(percentage),
+      onSuccess: (fileId) => {
+        startTransition(() => {
+          router.push(`configure/design?id=${fileId}`);
+        });
+      },
+    });
+
+    setIsDragOver(false);
+  };
+
   const [isPending, startTransition] = useTransition();
 
   return (
