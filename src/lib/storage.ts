@@ -8,6 +8,8 @@ interface UploadOptions {
   onError?: (error: Error) => void;
 }
 
+const endpoint = `https://${projectRef}.storage.supabase.co/storage/v1/upload/resumable`;
+
 export async function uploadWithProgress({
   file,
   onProgress,
@@ -17,9 +19,10 @@ export async function uploadWithProgress({
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_KEY!;
 
   const upload = new tus.Upload(file, {
-    endpoint: `https://${projectRef}.storage.supabase.co/storage/v1/upload/resumable`,
+    endpoint: endpoint,
     retryDelays: [0, 3000, 5000, 10000, 20000],
     headers: {
+      apikey: anonKey,
       Authorization: `Bearer ${anonKey}`,
       "x-upsert": "true",
     },
@@ -30,6 +33,7 @@ export async function uploadWithProgress({
     },
     removeFingerprintOnSuccess: true,
     onProgress: (bytesUploaded, bytesTotal) => {
+      console.log(`Progress: ${bytesUploaded}/${bytesTotal}`);
       const percentage = Number(
         ((bytesUploaded / bytesTotal) * 100).toFixed(2),
       );
@@ -40,6 +44,7 @@ export async function uploadWithProgress({
       onSuccess?.(fileId!);
     },
     onError: (error) => {
+      console.error(`Tus upload error: ${error}`);
       onError?.(error);
     },
   });
