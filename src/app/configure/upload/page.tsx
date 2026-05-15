@@ -1,7 +1,6 @@
 "use client";
 
 import { Progress } from "@/components/ui/progress";
-import { uploadWithProgress } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 import { Image, Loader2, MousePointerSquareDashed } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -12,7 +11,7 @@ import { toast } from "sonner";
 const Page = () => {
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
   const [isUploading, setIsUploading] = useState<boolean>(false);
-  const [uploadProgress, setUploadProgress] = useState<number>(45);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
   const router = useRouter();
 
   const onDropRejected = (rejectedFiles: Array<FileRejection>) => {
@@ -20,20 +19,56 @@ const Page = () => {
     setIsDragOver(false);
     toast.error(`${file.file.type} is not supported.`);
   };
-  const onDropAccepted = (files: Array<File>) => {
+  const onDropAccepted = async (files: Array<File>) => {
+    setIsDragOver(false);
     setIsUploading(true);
 
-    uploadWithProgress({
-      file: files[0],
-      onProgress: (percentage) => setUploadProgress(percentage),
-      onSuccess: (fileId) => {
-        startTransition(() => {
-          router.push(`configure/design?id=${fileId}`);
-        });
-      },
-    });
+    const formData = new FormData();
+    formData.append("file", files[0]);
 
-    setIsDragOver(false);
+    try {
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("Upload failed");
+      }
+
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("progress: ")) {
+            setUploadProgress(parseFloat(line.slice(10)));
+          } else if (line.startsWith("fileId: ")) {
+            const fileId = line.slice(8);
+            startTransition(() => {
+              console.log("nombre del archivo", fileId);
+              router.push(`/configure/design?id=${fileId}`);
+            });
+            return;
+          } else if (line.startsWith("error: ")) {
+            throw new Error(line.slice(7));
+          }
+        }
+      }
+
+      throw new Error("Upload failed");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+      setIsUploading(false);
+    }
   };
 
   const [isPending, startTransition] = useTransition();
