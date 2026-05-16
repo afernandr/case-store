@@ -1,6 +1,7 @@
 import * as tus from "tus-js-client";
-import crypto from "crypto";
-import { projectRef } from "@/lib/supabase";
+import sharp from "sharp";
+import { supabase, projectRef } from "@/lib/supabase";
+import { db } from "@/db";
 
 export async function POST(req: Request) {
   const formData = await req.formData();
@@ -25,8 +26,8 @@ export async function POST(req: Request) {
   const arrayBuffer = await file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
 
-  const fileId = crypto.randomUUID();
-  const objectName = `uploads/${fileId}/${file.name}`;
+  const existingConfigId = formData.get("configId") as string | null;
+  const objectName = `uploads/${file.name}`;
 
   const endpoint = `https://${projectRef}.storage.supabase.co/storage/v1/upload/resumable`;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_KEY!;
@@ -48,27 +49,65 @@ export async function POST(req: Request) {
             objectName,
             contentType: file.type,
           },
-          removeFingerprintOnSuccess: true,
           onProgress: (bytesUploaded, bytesTotal) => {
             const percentage = Number(
               ((bytesUploaded / bytesTotal) * 100).toFixed(2),
             );
-            const data = new TextEncoder().encode(
-              `progress: ${percentage}\n`,
-            );
+            const data = new TextEncoder().encode(`progress: ${percentage}\n`);
             controller.enqueue(data);
           },
-          onSuccess: () => {
-            const data = new TextEncoder().encode(
-              `fileId: ${fileId}\n`,
-            );
-            controller.enqueue(data);
-            controller.close();
+          onSuccess: async () => {
+            try {
+              const { data: blob, error: downloadError } =
+                await supabase.storage
+                  .from("case-store-bucket")
+                  .download(objectName);
+
+              if (downloadError) throw downloadError;
+
+              const buffer = Buffer.from(await blob.arrayBuffer());
+
+              const metadata = await sharp(buffer).metadata();
+
+              const { data: signedUrlData, error: signedUrlError } =
+                await supabase.storage
+                  .from("case-store-bucket")
+                  .createSignedUrl(objectName, 315360000);
+
+              if (signedUrlError) throw signedUrlError;
+
+              let configId: string;
+
+              if (existingConfigId) {
+                await db.configuration.update({
+                  where: { id: existingConfigId },
+                  data: { croppedImageUrl: signedUrlData.signedUrl },
+                });
+                configId = existingConfigId;
+              } else {
+                const { id } = await db.configuration.create({
+                  data: {
+                    width: metadata.width || 500,
+                    height: metadata.height || 500,
+                    imageUrl: signedUrlData.signedUrl,
+                  },
+                });
+                configId = id;
+              }
+
+              const data = new TextEncoder().encode(`configId: ${configId}\n`);
+              controller.enqueue(data);
+              controller.close();
+            } catch (err) {
+              const message =
+                err instanceof Error ? err.message : "Failed to process image";
+              const data = new TextEncoder().encode(`error: ${message}\n`);
+              controller.enqueue(data);
+              controller.close();
+            }
           },
           onError: (error) => {
-            const data = new TextEncoder().encode(
-              `error: ${error.message}\n`,
-            );
+            const data = new TextEncoder().encode(`error: ${error.message}\n`);
             controller.enqueue(data);
             controller.close();
           },
@@ -76,8 +115,7 @@ export async function POST(req: Request) {
 
         upload.start();
       } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Upload failed";
+        const message = err instanceof Error ? err.message : "Upload failed";
         const data = new TextEncoder().encode(`error: ${message}\n`);
         controller.enqueue(data);
         controller.close();

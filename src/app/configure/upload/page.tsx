@@ -3,16 +3,18 @@
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { Image, Loader2, MousePointerSquareDashed } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState, useTransition } from "react";
 import Dropzone, { FileRejection } from "react-dropzone";
 import { toast } from "sonner";
 
-const Page = () => {
+const UploadForm = () => {
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const configId = searchParams.get("configId");
 
   const onDropRejected = (rejectedFiles: Array<FileRejection>) => {
     const [file] = rejectedFiles;
@@ -25,6 +27,7 @@ const Page = () => {
 
     const formData = new FormData();
     formData.append("file", files[0]);
+    if (configId) formData.append("configId", configId);
 
     try {
       const response = await fetch("/api/upload", {
@@ -51,11 +54,10 @@ const Page = () => {
         for (const line of lines) {
           if (line.startsWith("progress: ")) {
             setUploadProgress(parseFloat(line.slice(10)));
-          } else if (line.startsWith("fileId: ")) {
-            const fileId = line.slice(8);
+          } else if (line.startsWith("configId: ")) {
+            const configId = line.slice(9);
             startTransition(() => {
-              console.log("nombre del archivo", fileId);
-              router.push(`/configure/design?id=${fileId}`);
+              router.push(`/configure/design?id=${configId}`);
             });
             return;
           } else if (line.startsWith("error: ")) {
@@ -140,5 +142,11 @@ const Page = () => {
     </div>
   );
 };
+
+const Page = () => (
+  <Suspense>
+    <UploadForm />
+  </Suspense>
+);
 
 export default Page;
